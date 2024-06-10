@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HamStats.Website", "HamStats.Website\HamStats.Website.csproj", "{DC2A1A0E-209D-4718-869E-53EE4DBE2A48}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HamStats.Data", "HamStats.Data\HamStats.Data.csproj", "{14121ABB-F650-43EB-A146-F7CF95CE9B39}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{DC2A1A0E-209D-4718-869E-53EE4DBE2A48}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DC2A1A0E-209D-4718-869E-53EE4DBE2A48}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DC2A1A0E-209D-4718-869E-53EE4DBE2A48}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DC2A1A0E-209D-4718-869E-53EE4DBE2A48}.Release|Any CPU.Build.0 = Release|Any CPU
+		{14121ABB-F650-43EB-A146-F7CF95CE9B39}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{14121ABB-F650-43EB-A146-F7CF95CE9B39}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{14121ABB-F650-43EB-A146-F7CF95CE9B39}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{14121ABB-F650-43EB-A146-F7CF95CE9B39}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
