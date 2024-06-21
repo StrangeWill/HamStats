@@ -2,6 +2,7 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 using System.Xml.Linq;
 using System.Xml.Serialization;
 using HamStats.Data;
@@ -28,17 +29,27 @@ public class N1MMWatcher : IHostedService
         UdpClient = new UdpClient(new IPEndPoint(IPAddress.Any, 16000));
     }
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    public Task StartAsync(CancellationToken cancellationToken)
     {
-        await ReceiveDataAsync(cancellationToken);
+        _ = ReceiveDataAsync(cancellationToken);
+        return Task.CompletedTask;
     }
 
     protected async Task ReceiveDataAsync(CancellationToken cancellationToken)
     {
-        var result = await UdpClient.ReceiveAsync();
-        var receivedMessage = Encoding.UTF8.GetString(result.Buffer).Replace("False", "false").Replace("True", "false");
-        var element = XElement.Parse(receivedMessage);
-        await HandleMessage(element);
+        try
+        {
+            var result = await UdpClient.ReceiveAsync();
+            var receivedMessage = Encoding.UTF8.GetString(result.Buffer).Replace("False", "false").Replace("True", "false");
+            Logger.LogTrace(receivedMessage);
+            var element = XElement.Parse(receivedMessage);
+            await HandleMessage(element);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Error handling message");
+        }
+
         if (cancellationToken.IsCancellationRequested)
         {
             return;
@@ -118,12 +129,16 @@ public class N1MMWatcher : IHostedService
     protected async Task Process(ContactInfo info)
     {
         using var scope = ServiceProvider.CreateScope();
-        var hamStatsDb = scope.ServiceProvider.GetRequiredService<HamStatsDb>();
-        hamStatsDb.N1MMContacts.Add(new N1MMContact
+        var hamStatsDbContext = scope.ServiceProvider.GetRequiredService<HamStatsDbContext>();
+        var radioId = await hamStatsDbContext.N1MMRadios
+            .Where(r => r.RadioNumber == info.RadioNumber)
+            .Select(r => r.VFO!.RadioId)
+            .FirstAsync();
+        hamStatsDbContext.N1MMContacts.Add(new N1MMContact
         {
-            Date = info.TimeStamp.Value,
-            FromCall = info.MyCall,
-            ToCall = info.Call,
+            Date = info.TimeStamp.Value.ToUniversalTime(),
+            FromCall = info.MyCall!,
+            ToCall = info.Call!,
             Band = info.Band,
             RxFrequency = info.RxFrequency,
             TxFrequency = info.TxFrequency,
@@ -131,10 +146,26 @@ public class N1MMWatcher : IHostedService
             CountryPrefix = info.CountryPrefix,
             Sent = info.Sent,
             Receive = info.Received,
-            Exchange = info.Exchangel,
-            N1MMId = info.Id
+            Exchange = info.Exchange1,
+            Section = info.Section,
+            Operator = info.Operator,
+            N1MMId = info.Id!,
+            Contact = new Contact
+            {
+                Date = info.TimeStamp.Value.ToUniversalTime(),
+                FromCall = info.MyCall!,
+                ToCall = info.Call!,
+                Band = info.Band,
+                Mode = info.Mode,
+                RxFrequency = info.RxFrequency,
+                TxFrequency = info.TxFrequency,
+                Class = info.Exchange1,
+                Section = info.Section,
+                RadioId = radioId.Value,
+                Operator = info.Operator,
+            }
         });
-        await hamStatsDb.SaveChangesAsync();
+        await hamStatsDbContext.SaveChangesAsync();
 
         Logger.LogDebug($"Contact: {info.Call} - {info.Band} - {info.TimeStamp.Value.ToUniversalTime()} - {info.Mode} - {info.RadioInterfaced} - {info.RadioNumber} - {info.Operator} - RX: {info.RxFrequency} - TX: {info.TxFrequency}");
     }
@@ -142,8 +173,10 @@ public class N1MMWatcher : IHostedService
     protected async Task Process(ContactReplace info)
     {
         using var scope = ServiceProvider.CreateScope();
-        var hamStatsDb = scope.ServiceProvider.GetRequiredService<HamStatsDb>();
-        var contact = await hamStatsDb.N1MMContacts.FirstOrDefaultAsync(n => n.N1MMId == info.Id);
+        var hamStatsDbContext = scope.ServiceProvider.GetRequiredService<HamStatsDbContext>();
+        var contact = await hamStatsDbContext.N1MMContacts
+            .Include(c => c.Contact)
+            .FirstOrDefaultAsync(n => n.N1MMId == info.Id);
         if (contact is null)
         {
             return;
@@ -159,16 +192,32 @@ public class N1MMWatcher : IHostedService
         contact.CountryPrefix = info.CountryPrefix;
         contact.Sent = info.Sent;
         contact.Receive = info.Received;
-        contact.Exchange = info.Exchangel;
-        await hamStatsDb.SaveChangesAsync();
+        contact.Exchange = info.Exchange1;
+        contact.Section = info.Section;
+        contact.Contact.Band = info.Band;
+        contact.Contact.FromCall = info.MyCall;
+        contact.Contact.ToCall = info.Call;
+        contact.Contact.Band = info.Band;
+        contact.Contact.Mode = info.Mode;
+        contact.Contact.RxFrequency = info.RxFrequency;
+        contact.Contact.TxFrequency = info.TxFrequency;
+        contact.Contact.Class = info.Exchange1;
+        contact.Contact.Section = info.Section;
+
+        await hamStatsDbContext.SaveChangesAsync();
         Logger.LogDebug($"Contact Replace: {info.App}");
     }
 
     protected async Task Process(ContactDelete info)
     {
         using var scope = ServiceProvider.CreateScope();
-        var hamStatsDb = scope.ServiceProvider.GetRequiredService<HamStatsDb>();
-        await hamStatsDb.N1MMContacts.Where(n => n.N1MMId == info.Id).ExecuteDeleteAsync();
+        var hamStatsDbContext = scope.ServiceProvider.GetRequiredService<HamStatsDbContext>();
+        await hamStatsDbContext.Contacts
+            .Where(c => c.N1MMContact.N1MMId == info.Id)
+            .ExecuteDeleteAsync();
+        await hamStatsDbContext.N1MMContacts
+            .Where(n => n.N1MMId == info.Id)
+            .ExecuteDeleteAsync();
         Logger.LogDebug($"Contact Delete: {info.App}");
     }
 
@@ -180,20 +229,46 @@ public class N1MMWatcher : IHostedService
     protected async Task Process(RadioInfo info)
     {
         using var scope = ServiceProvider.CreateScope();
-        var hamStatsDb = scope.ServiceProvider.GetRequiredService<HamStatsDb>();
-        var radio = await hamStatsDb.N1MMRadios
+        var hamStatsDbContext = scope.ServiceProvider.GetRequiredService<HamStatsDbContext>();
+        var n1mmRadio = await hamStatsDbContext.N1MMRadios
+            .Include(r => r.VFO)
+            .ThenInclude(r => r!.Radio)
             .Where(r => r.StationName == info.StationName && r.RadioName == info.RadioName && r.RadioNumber == info.RadioNumber)
-            .FirstOrDefaultAsync() ?? hamStatsDb.Add(
-            new N1MMRadio
-            {
-                StationName = info.StationName!,
-                RadioName = info.RadioName!,
-                RadioNumber = info.RadioNumber,
-            }).Entity;
-        radio.LastSeen = DateTime.UtcNow;
-        radio.RxFrequency = info.Frequency;
-        radio.TxFrequency = info.TxFrequency;
-        await hamStatsDb.SaveChangesAsync();
+            .FirstOrDefaultAsync();
+        if (n1mmRadio is null)
+        {
+            var radio = await hamStatsDbContext.Radios
+                .FirstOrDefaultAsync(r => r.VFOs.Any(v => v.N1MMRadio!.RadioName == info.RadioName)) ?? new Radio
+                {
+                    Name = info.RadioName,
+                    Operator = info.OpCall
+                };
+            n1mmRadio = hamStatsDbContext.Add(
+                new N1MMRadio
+                {
+                    StationName = info.StationName!,
+                    RadioName = info.RadioName!,
+                    RadioNumber = info.RadioNumber,
+                    VFO = new VFO
+                    {
+                        Name = info.RadioNumber switch
+                        {
+                            1 => "A",
+                            2 => "B",
+                            _ => throw new Exception($"Radio Number {info.RadioNumber} cannot be resolved to a VFO")
+                        },
+                        Radio = radio
+                    }
+                }).Entity;
+        }
+
+        n1mmRadio.LastSeen = DateTime.UtcNow;
+        n1mmRadio.RxFrequency = info.Frequency;
+        n1mmRadio.TxFrequency = info.TxFrequency;
+        n1mmRadio.VFO.RxFrequency = info.Frequency;
+        n1mmRadio.VFO.TxFrequency = info.TxFrequency;
+        n1mmRadio.VFO.Radio.Operator = info.OpCall;
+        await hamStatsDbContext.SaveChangesAsync();
         Logger.LogDebug($"Radio Info: {info.RadioName} #:{info.RadioNumber} - RX: {info.Frequency} - TX: {info.TxFrequency}");
     }
 
@@ -205,10 +280,10 @@ public class N1MMWatcher : IHostedService
     protected async Task Process(ScorePayload info)
     {
         using var scope = ServiceProvider.CreateScope();
-        var hamStatsDb = scope.ServiceProvider.GetRequiredService<HamStatsDb>();
-        var score = await hamStatsDb.Scores
+        var hamStatsDbContext = scope.ServiceProvider.GetRequiredService<HamStatsDbContext>();
+        var score = await hamStatsDbContext.Scores
             .Include(s => s.Breakdown)
-            .FirstOrDefaultAsync() ?? hamStatsDb.Scores.Add(new Score
+            .FirstOrDefaultAsync() ?? hamStatsDbContext.Scores.Add(new Score
             {
                 Breakdown = []
             }).Entity;
@@ -261,7 +336,7 @@ public class N1MMWatcher : IHostedService
             breakdown.QSOs = qso.Value;
         }
 
-        await hamStatsDb.SaveChangesAsync();
+        await hamStatsDbContext.SaveChangesAsync();
         Logger.LogDebug($"Score: {info.Score}");
     }
 }

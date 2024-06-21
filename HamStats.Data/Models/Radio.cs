@@ -12,6 +12,8 @@ public class Radio : IEntityTypeConfiguration<Radio>
 
     public required string Name { get; set; }
 
+    public ICollection<Contact> Contacts { get; set; } = null!;
+
     public ICollection<VFO> VFOs { get; set; } = null!;
 
     public void Configure(EntityTypeBuilder<Radio> builder)

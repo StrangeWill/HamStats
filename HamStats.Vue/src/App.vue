@@ -1,30 +1,116 @@
-<script setup lang="ts">
-import HelloWorld from './components/HelloWorld.vue'
-</script>
-
 <template>
-  <div>
-    <a href="https://vitejs.dev" target="_blank">
-      <img src="/vite.svg" class="logo" alt="Vite logo" />
-    </a>
-    <a href="https://vuejs.org/" target="_blank">
-      <img src="./assets/vue.svg" class="logo vue" alt="Vue logo" />
-    </a>
-  </div>
-  <HelloWorld msg="Vite + Vue" />
+  <v-app>
+    <v-app-bar title="W3DEV Field Day Stats"></v-app-bar>
+    <v-main>
+      <v-container>
+        <v-card flat>
+          <v-card-title>
+            Radios
+          </v-card-title>
+          <v-card-text>
+            <v-data-table :headers="radioHeaders" :items-per-page="-1" :items="radios" hide-default-footer>
+              <template v-slot:item.vfOs="{ item }">
+                <div v-for="vfo in item.vfOs">
+                  {{ vfo.name }} : {{ formatFrequency(vfo.txFrequency) }} / {{ formatFrequency(vfo.txFrequency) }}
+                </div>
+              </template>
+            </v-data-table>
+          </v-card-text>
+        </v-card>
+        <v-card flat>
+          <v-card-title>
+            Contacts
+          </v-card-title>
+          <v-card-text>
+            <v-data-table :headers="contactHeaders" :items-per-page="-1" :items="contacts" hide-default-footer>
+              <template v-slot:item.txFrequency="{ item }">
+                {{ formatFrequency(item.txFrequency) }}
+              </template>
+              <template v-slot:item.rxFrequency="{ item }">
+                {{ formatFrequency(item.rxFrequency) }}
+              </template>
+            </v-data-table>
+          </v-card-text>
+        </v-card>
+        <v-card flat>
+          <v-card-title>
+            Scores
+          </v-card-title>
+          <v-card-text>
+            <v-data-table :headers="scoreHeaders" :items-per-page="-1" :items="scores.breakdown" hide-default-footer>
+            </v-data-table>
+          </v-card-text>
+        </v-card>
+      </v-container>
+    </v-main>
+  </v-app>
 </template>
 
-<style scoped>
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
+<script setup lang="ts">
+import axios from "axios";
+import { ref, onMounted } from "vue";
+
+const contacts = ref<any[]>([]);
+const radios = ref<any[]>([]);
+const scores = ref<any>({});
+
+const radioHeaders = [
+  { key: "name", title: "Radio Name"  },
+  { key: "operator", title: "Operator" },
+  { key: "vfOs", title: "VFOs"}
+];
+
+const contactHeaders = [
+  { key: "radio", title: "Radio" },
+  { key: "operator", title: "Operator" },
+  { key: "date", title: "Date" },
+  { key: "toCall", title: "toCall" },
+  { key: "mode", title: "Mode" },
+  { key: "band", title: "Band" },
+  { key: "rxFrequency", title: "Rx Frequency" },
+  { key: "txFrequency", title: "Tx Frequency" },
+  { key: "class", title: "Class" },
+  { key: "section", title: "Section" },
+];
+
+const scoreHeaders = [
+  { key: "band", title: "Band" },
+  { key: "mode", title: "Mode" },
+  { key: "points", title: "Points" },
+  { key: "qsOs", title: "QSOs" },
+];
+
+
+
+function formatFrequency(number) {
+  let numStr = number.toString();
+  numStr = numStr.padStart(6, '0');
+  let formatted;
+  if (numStr.length <= 6) {
+    formatted = numStr.slice(0, 1) + '.' + numStr.slice(1, 4) + '.' + numStr.slice(4, 6);
+  } else if (numStr.length <= 7) {
+    formatted = numStr.slice(0, 2) + '.' + numStr.slice(2, 5) + '.' + numStr.slice(5, 7);
+  } else {
+    formatted = numStr.slice(0, numStr.length - 6) + '.' +
+      numStr.slice(numStr.length - 6, numStr.length - 3) + '.' +
+      numStr.slice(numStr.length - 3);
+  }
+  formatted += 'mhz';
+  return formatted;
 }
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.vue:hover {
-  filter: drop-shadow(0 0 2em #42b883aa);
-}
-</style>
+
+onMounted(async () => {
+  setInterval(async() => {
+    const contactResponse = await axios.get("/api/v0/contacts");
+    contacts.value = contactResponse.data;
+
+    const radioResponse = await axios.get("/api/v0/radios");
+    radios.value = radioResponse.data;
+
+
+    const scoreResponse = await axios.get("/api/v0/scores");
+    scores.value = scoreResponse.data;
+  }, 1000);
+});
+</script>
+so

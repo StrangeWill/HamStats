@@ -66,8 +66,8 @@ public class ContactInfo
     [XmlElement("gridsquare")]
     public string? Gridsquare { get; set; }
 
-    [XmlElement("exchangel")]
-    public string? Exchangel { get; set; }
+    [XmlElement("exchange1")]
+    public string? Exchange1 { get; set; }
 
     [XmlElement("section")]
     public string? Section { get; set; }

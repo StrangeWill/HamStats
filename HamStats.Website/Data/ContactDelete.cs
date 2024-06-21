@@ -3,6 +3,7 @@ using HamStats.Website.Xml;
 
 namespace HamStats.Website.Data;
 
+[XmlRoot("contactdelete")]
 public class ContactDelete
 {
     [XmlElement("app")]
