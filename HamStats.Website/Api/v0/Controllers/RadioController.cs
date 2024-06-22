@@ -24,14 +24,19 @@ public class RadioController : Controller
                 r.Id,
                 r.Name,
                 r.Operator,
-                VFOs = r.VFOs.Select(v => new
-                {
-                    v.Id,
-                    v.Name,
-                    v.RxFrequency,
-                    v.TxFrequency
-                })
+                VFOs = r.VFOs
+                    .Select(v => new
+                    {
+                        v.Id,
+                        v.Name,
+                        v.RxFrequency,
+                        v.TxFrequency
+                    })
+                    .OrderBy(v => v.Name)
+                    .ToList(),
+                Contacts = r.Contacts.Count()
             })
+            .OrderByDescending(s => s.Contacts)
             .ToListAsync());
     }
 }
