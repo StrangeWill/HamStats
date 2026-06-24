@@ -1,0 +1,20 @@
+# Build artifacts
+**/bin/
+**/obj/
+HamStats.Vue/node_modules/
+HamStats.Vue/build/
+HamStats.Vue/dist/
+HamStats.Website/wwwroot/
+
+# Local env / data
+.env
+data/
+
+# VCS & editor
+.git/
+.vs/
+.vscode/
+.idea/
+
+# Docs & misc
+*.md

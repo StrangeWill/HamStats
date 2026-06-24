@@ -17,10 +17,9 @@ var configuration = builder.Configuration;
 
 builder.Services
     .AddDbContext<HamStatsDbContext>(options => options
-        .UseNpgsql(configuration.GetConnectionString("Default"),
+        .UseSqlite(configuration.GetConnectionString("Default"),
             o => o
-                .UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)
-                .EnableRetryOnFailure(5))
+                .UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery))
         .EnableSensitiveDataLogging())
     .AddHostedService<N1MMWatcher>()
     .AddSwaggerGen()

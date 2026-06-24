@@ -6,7 +6,16 @@ project.lock.json
 .DS_Store
 *.pyc
 nupkg/
-HamStats.Websitesite/wwwroot
+HamStats.Website/wwwroot
+
+# Docker / local secrets
+.env
+data/
+
+# SQLite database
+*.db
+*.db-shm
+*.db-wal
 
 
 # Rider

@@ -1,16 +1,11 @@
-version: "3.8"
-
 services:
-  postgres:
-    image: "postgres:16"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data/
+  hamstats:
+    image: roushtech/hamstats:${VERSION:-stable}
+    env_file: .env
     ports:
-      - 5432:5432
-    environment:
-      POSTGRES_USER: "hamstats"
-      POSTGRES_PASSWORD: "hamstats"
-      POSTGRES_DB: "hamstats"
-
-volumes:
-    postgres_data: {}
+      - "${HTTP_PORT:-80}:5000"
+      # N1MM+ broadcasts contacts/scores here over UDP — point your logger at this host:port
+      - "${N1MM_PORT:-16000}:16000/udp"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
