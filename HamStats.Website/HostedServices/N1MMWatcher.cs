@@ -178,10 +178,18 @@ public class N1MMWatcher : IHostedService
     {
         using var scope = ServiceProvider.CreateScope();
         var hamStatsDbContext = scope.ServiceProvider.GetRequiredService<HamStatsDbContext>();
+        // N1MM's radionr is only the radio slot within a station (1=A, 2=B), not a unique radio id,
+        // so match on StationName too — otherwise every station's radio 1 collapses onto the first one seen.
         var radioId = await hamStatsDbContext.N1MMRadios
-            .Where(r => r.RadioNumber == info.RadioNumber)
-            .Select(r => r.VFO!.RadioId)
-            .FirstAsync();
+            .Where(r => r.StationName == info.StationName && r.RadioNumber == info.RadioNumber)
+            .Select(r => (Guid?)r.VFO!.RadioId)
+            .FirstOrDefaultAsync();
+        if (radioId is null)
+        {
+            // Contact arrived before its radioinfo registered the radio; drop it rather than crash.
+            Logger.LogWarning($"No radio for contact {info.Call} (station {info.StationName}, radio {info.RadioNumber}); skipping.");
+            return;
+        }
         var gridsquare = await ResolveGrid(hamStatsDbContext, info.Gridsquare, info.Call);
         hamStatsDbContext.N1MMContacts.Add(new N1MMContact
         {
