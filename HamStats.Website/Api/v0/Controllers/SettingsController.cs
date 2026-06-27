@@ -42,13 +42,15 @@ public partial class SettingsController : Controller
     public async Task<IActionResult> Get()
     {
         var settings = await HamStatsDbContext.Settings
-            .Where(s => s.Key == TimeZoneKey || s.Key == StationGridKey || s.Key == CycleSecondsKey)
+            .Where(s => s.Key == TimeZoneKey || s.Key == StationGridKey || s.Key == CycleSecondsKey
+                || s.Key == ManualRadioFilter.SettingKey)
             .ToDictionaryAsync(s => s.Key, s => s.Value);
         return Ok(new
         {
             timeZone = settings.GetValueOrDefault(TimeZoneKey) ?? DefaultTimeZone,
             stationGrid = settings.GetValueOrDefault(StationGridKey),
             cycleSeconds = int.TryParse(settings.GetValueOrDefault(CycleSecondsKey), out var s) ? s : DefaultCycleSeconds,
+            filterManualRadios = settings.TryGetValue(ManualRadioFilter.SettingKey, out var f) ? f == "true" : ManualRadioFilter.Default,
         });
     }
 
@@ -96,6 +98,13 @@ public partial class SettingsController : Controller
         return NoContent();
     }
 
+    [HttpPut("filter-manual")]
+    public async Task<IActionResult> SetFilterManual([FromBody] FilterManualRequest request)
+    {
+        await Upsert(ManualRadioFilter.SettingKey, request.Enabled ? "true" : "false");
+        return NoContent();
+    }
+
     private async Task Upsert(string key, string value)
     {
         var setting = await HamStatsDbContext.Settings.FirstOrDefaultAsync(s => s.Key == key);
@@ -125,4 +134,9 @@ public class GridRequest
 public class CycleRequest
 {
     public int Seconds { get; set; }
+}
+
+public class FilterManualRequest
+{
+    public bool Enabled { get; set; }
 }

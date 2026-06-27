@@ -17,7 +17,10 @@ public class ContactController : Controller
     [HttpGet]
     public async Task<IActionResult> Get()
     {
+        var hideManual = await ManualRadioFilter.IsEnabled(HamStatsDbContext);
+
         return Ok(await HamStatsDbContext.Contacts
+            .Where(c => !hideManual || c.Radio.Name != ManualRadioFilter.Name)
             .Select(c => new
             {
                 c.Id,

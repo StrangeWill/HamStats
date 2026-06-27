@@ -27,7 +27,10 @@ public class RadioController : Controller
         var since15 = now.AddMinutes(-15);
         var since60 = now.AddMinutes(-60);
 
+        var hideManual = await ManualRadioFilter.IsEnabled(HamStatsDbContext);
+
         var radios = await HamStatsDbContext.Radios
+            .Where(r => !hideManual || r.Name != ManualRadioFilter.Name)
             .OrderBy(r => r.Name)
             .Select(r => new
             {

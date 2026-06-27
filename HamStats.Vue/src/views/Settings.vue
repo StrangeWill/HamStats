@@ -31,6 +31,19 @@
         <div class="text-caption mt-2 text-medium-emphasis">
           How long each view stays up before the kiosk rotates to the next (5–600s). {{ cycleMessage }}
         </div>
+        <v-switch
+          v-model="filterManual"
+          color="primary"
+          label="Hide &quot;Manual&quot; stations"
+          hide-details
+          class="mt-2"
+          :loading="savingFilter"
+          @update:model-value="saveFilterManual"
+        />
+        <div class="text-caption text-medium-emphasis">
+          N1MM names a radio "Manual" when it loses its CAT link; hide those from the dashboard and APIs.
+          {{ filterMessage }}
+        </div>
       </v-card-text>
     </v-card>
 
@@ -175,6 +188,10 @@ const cycle = ref<number>(cycleSeconds.value);
 const savingCycle = ref(false);
 const cycleMessage = ref("");
 
+const filterManual = ref(true);
+const savingFilter = ref(false);
+const filterMessage = ref("");
+
 const radios = ref<Radio[]>([]);
 const deletingId = ref<string | null>(null);
 const showDelete = ref(false);
@@ -232,6 +249,19 @@ async function saveCycle() {
   }
 }
 
+async function saveFilterManual(value: boolean | null) {
+  savingFilter.value = true;
+  filterMessage.value = "";
+  try {
+    await axios.put("/api/v0/settings/filter-manual", { enabled: !!value });
+    filterMessage.value = "Saved.";
+  } catch {
+    filterMessage.value = "Failed to save.";
+  } finally {
+    savingFilter.value = false;
+  }
+}
+
 async function loadRadios() {
   const { data } = await axios.get("/api/v0/radios");
   radios.value = data;
@@ -284,6 +314,8 @@ onMounted(async () => {
   selected.value = timeZone.value;
   grid.value = stationGrid.value ?? "";
   cycle.value = cycleSeconds.value;
+  const { data: settings } = await axios.get("/api/v0/settings");
+  filterManual.value = settings?.filterManualRadios ?? true;
   await loadStatus();
   await loadRadios();
   // keep the preview clock ticking, and refresh the build status / station list periodically

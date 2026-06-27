@@ -8,6 +8,7 @@ using System.Xml.Linq;
 using System.Xml.Serialization;
 using HamStats.Data;
 using HamStats.Data.Models;
+using HamStats.Website.CallsignLookup;
 using HamStats.Website.Data;
 using HamStats.Website.Hubs;
 using Microsoft.EntityFrameworkCore;
@@ -190,7 +191,7 @@ public class N1MMWatcher : IHostedService
             Logger.LogWarning($"No radio for contact {info.Call} (station {info.StationName}, radio {info.RadioNumber}); skipping.");
             return;
         }
-        var gridsquare = await ResolveGrid(hamStatsDbContext, info.Gridsquare, info.Call);
+        var gridsquare = await ResolveGrid(hamStatsDbContext, info.Gridsquare, info.Call, info.Section);
         hamStatsDbContext.N1MMContacts.Add(new N1MMContact
         {
             Date = info.TimeStamp.Value.ToUniversalTime(),
@@ -262,7 +263,7 @@ public class N1MMWatcher : IHostedService
         contact.Contact.TxFrequency = info.TxFrequency;
         contact.Contact.Class = info.Exchange1;
         contact.Contact.Section = info.Section;
-        contact.Contact.Gridsquare = await ResolveGrid(hamStatsDbContext, info.Gridsquare, info.Call);
+        contact.Contact.Gridsquare = await ResolveGrid(hamStatsDbContext, info.Gridsquare, info.Call, info.Section);
 
         await hamStatsDbContext.SaveChangesAsync();
         await Notifier.Changed(DashboardNotifier.Contacts);
@@ -290,9 +291,11 @@ public class N1MMWatcher : IHostedService
 
     /// <summary>
     /// Resolves the worked station's Maidenhead grid: prefer what N1MM supplied, otherwise fall back
-    /// to the offline <see cref="CallsignEntry"/> lookup table (populated by the Hangfire import job).
+    /// to the offline <see cref="CallsignEntry"/> lookup table (populated by the Hangfire import job),
+    /// and finally — for Field Day stations that exchange an ARRL/RAC section but no grid — to the
+    /// section's centroid.
     /// </summary>
-    protected async Task<string?> ResolveGrid(HamStatsDbContext hamStatsDbContext, string? provided, string? call)
+    protected async Task<string?> ResolveGrid(HamStatsDbContext hamStatsDbContext, string? provided, string? call, string? section)
     {
         if (!string.IsNullOrWhiteSpace(provided))
         {
@@ -301,7 +304,7 @@ public class N1MMWatcher : IHostedService
 
         if (string.IsNullOrWhiteSpace(call))
         {
-            return null;
+            return ArrlSections.GridFor(section);
         }
 
         var key = call.ToUpperInvariant();
@@ -319,12 +322,20 @@ public class N1MMWatcher : IHostedService
         // Fall back to the cty.dat prefix table for DX coverage: an exact-callsign exception wins,
         // otherwise the longest matching leading prefix. Naive leading match (ignores portable
         // indicators) but sufficient to place a contact at its DXCC entity.
-        return await hamStatsDbContext.CallsignPrefixes
+        var prefixGrid = await hamStatsDbContext.CallsignPrefixes
             .Where(p => (p.IsExact && p.Prefix == key) || (!p.IsExact && EF.Functions.Like(key, p.Prefix + "%")))
             .OrderByDescending(p => p.IsExact)
             .ThenByDescending(p => p.Prefix.Length)
             .Select(p => p.Grid)
             .FirstOrDefaultAsync();
+        if (prefixGrid is not null)
+        {
+            return prefixGrid;
+        }
+
+        // Last resort: Field Day stations exchange an ARRL/RAC section, not a grid, and many won't be
+        // in the callsign tables — place them at the section's centroid so they still map.
+        return ArrlSections.GridFor(section);
     }
 
     protected async Task Process(RadioInfo info)

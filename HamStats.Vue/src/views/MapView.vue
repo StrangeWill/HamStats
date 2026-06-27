@@ -155,7 +155,7 @@ const H = 600;
 const GUTTER = 195;
 const DX_W = 180;
 const DX_H = 120;
-const FADE_MS = 60000; // QSO line lifetime
+const FADE_MS = 300000; // QSO line lifetime
 
 const wrap = ref<HTMLElement>();
 const panelEl = ref<HTMLElement>(); // radios panel, measured so right-gutter DX boxes clear it
