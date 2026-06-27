@@ -187,7 +187,14 @@ public class N1MMWatcher : IHostedService
             .FirstOrDefaultAsync();
         if (radioId is null)
         {
-            // Contact arrived before its radioinfo registered the radio; drop it rather than crash.
+            // Digital QSOs (FT8/FT4 via the WSJT-X/JTDX interface) arrive with radionr=0 — N1MM never
+            // assigns them an A/B slot — so the slot match above fails. Fall back to the radio at the same
+            // station tuned closest to the QSO's RX frequency (both N1MM 10 Hz strings).
+            radioId = await ResolveRadioByFrequency(hamStatsDbContext, info.StationName, info.RxFrequency);
+        }
+        if (radioId is null)
+        {
+            // Contact arrived before any radioinfo registered a radio for this station; drop it rather than crash.
             Logger.LogWarning($"No radio for contact {info.Call} (station {info.StationName}, radio {info.RadioNumber}); skipping.");
             return;
         }
@@ -228,6 +235,30 @@ public class N1MMWatcher : IHostedService
         await Notifier.Changed(DashboardNotifier.Contacts, DashboardNotifier.Radios);
 
         Logger.LogDebug($"Contact: {info.Call} - {info.Band} - {info.TimeStamp.Value.ToUniversalTime()} - {info.Mode} - {info.RadioInterfaced} - {info.RadioNumber} - {info.Operator} - RX: {info.RxFrequency} - TX: {info.TxFrequency}");
+    }
+
+    /// <summary>
+    /// Picks the radio at <paramref name="stationName"/> tuned closest to <paramref name="rxFrequency"/>.
+    /// Used for digital QSOs (radionr=0), which carry no A/B slot but do carry an RX frequency. The
+    /// candidate set is tiny (1–2 radios per station), so the nearest-frequency match runs in memory.
+    /// </summary>
+    protected async Task<Guid?> ResolveRadioByFrequency(HamStatsDbContext hamStatsDbContext, string? stationName, string? rxFrequency)
+    {
+        if (!long.TryParse(rxFrequency, out var target))
+        {
+            return null;
+        }
+
+        var candidates = await hamStatsDbContext.N1MMRadios
+            .Where(r => r.StationName == stationName && r.VFO != null)
+            .Select(r => new { r.RxFrequency, r.VFO!.RadioId })
+            .ToListAsync();
+
+        return candidates
+            .Where(c => c.RadioId is not null && long.TryParse(c.RxFrequency, out _))
+            .OrderBy(c => Math.Abs(long.Parse(c.RxFrequency!) - target))
+            .Select(c => c.RadioId)
+            .FirstOrDefault();
     }
 
     protected async Task Process(ContactReplace info)

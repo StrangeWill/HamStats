@@ -346,11 +346,20 @@ const totalQsos = computed(() => bandBreakdown.value.reduce((s, b) => s + b.qsos
 const totalScore = computed(() => scoreData.value?.value ?? 0);
 
 const PALETTE = ["#42a5f5", "#ef5350", "#66bb6a", "#ffa726", "#ab47bc", "#26c6da", "#d4e157", "#ec407a"];
-const radioColors = new Map<string, string>();
+// Persisted so a radio keeps its color across reloads and regardless of discovery order — assigning by
+// insertion order alone reshuffled everyone whenever a radio appeared/disappeared. New radios take the
+// first unused palette slot (wrapping once it's exhausted); existing assignments are never disturbed.
+const radioColors = new Map<string, string>(Object.entries(JSON.parse(localStorage.getItem("radioColors") ?? "{}")));
 function colorFor(name: string | null | undefined): string {
   const key = name || "—";
-  if (!radioColors.has(key)) radioColors.set(key, PALETTE[radioColors.size % PALETTE.length]);
-  return radioColors.get(key)!;
+  let color = radioColors.get(key);
+  if (!color) {
+    const used = new Set(radioColors.values());
+    color = PALETTE.find((c) => !used.has(c)) ?? PALETTE[radioColors.size % PALETTE.length];
+    radioColors.set(key, color);
+    localStorage.setItem("radioColors", JSON.stringify(Object.fromEntries(radioColors)));
+  }
+  return color;
 }
 
 // Hold full opacity for most of the lifetime, then drop off quickly over the final stretch.
