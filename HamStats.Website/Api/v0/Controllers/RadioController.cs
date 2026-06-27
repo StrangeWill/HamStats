@@ -1,4 +1,6 @@
 using HamStats.Data;
+using HamStats.Data.Models;
+using HamStats.Website.Hubs;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,9 +11,12 @@ public class RadioController : Controller
 {
     protected HamStatsDbContext HamStatsDbContext { get; }
 
-    public RadioController(HamStatsDbContext hamStatsDbContext)
+    protected DashboardNotifier Notifier { get; }
+
+    public RadioController(HamStatsDbContext hamStatsDbContext, DashboardNotifier notifier)
     {
         HamStatsDbContext = hamStatsDbContext;
+        Notifier = notifier;
     }
 
     [HttpGet]
@@ -65,6 +70,38 @@ public class RadioController : Controller
             .ToList();
 
         return Ok(result);
+    }
+
+    // Remove a station and everything that belongs only to it: its QSOs (both the normalized Contact
+    // and the raw N1MMContact mirror) and its VFOs (plus their N1MMRadio mirrors). Clearing the VFO/
+    // N1MMRadio rows lets the station re-register cleanly if N1MM broadcasts radioinfo for it again.
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        if (!await HamStatsDbContext.Radios.AnyAsync(r => r.Id == id))
+        {
+            return NotFound();
+        }
+
+        await using var transaction = await HamStatsDbContext.Database.BeginTransactionAsync();
+
+        // Contact carries the FK to N1MMContact, so delete it before its mirror.
+        var contacts = HamStatsDbContext.Contacts.Where(c => c.RadioId == id);
+        var n1mmContactIds = await contacts.Select(c => c.N1MMContactId).ToListAsync();
+        await contacts.ExecuteDeleteAsync();
+        await HamStatsDbContext.N1MMContacts.Where(n => n1mmContactIds.Contains(n.Id)).ExecuteDeleteAsync();
+
+        // N1MMRadio carries the FK to VFO, so delete it before the VFO. (VFO has no DbSet — reach it via Set<>.)
+        var vfos = HamStatsDbContext.Set<VFO>().Where(v => v.RadioId == id);
+        var vfoIds = await vfos.Select(v => v.Id).ToListAsync();
+        await HamStatsDbContext.N1MMRadios.Where(n => n.VFOId != null && vfoIds.Contains(n.VFOId.Value)).ExecuteDeleteAsync();
+        await vfos.ExecuteDeleteAsync();
+
+        await HamStatsDbContext.Radios.Where(r => r.Id == id).ExecuteDeleteAsync();
+
+        await transaction.CommitAsync();
+        await Notifier.Changed(DashboardNotifier.Radios, DashboardNotifier.Contacts);
+        return NoContent();
     }
 
     // QSOs/hour over the most recent n QSOs (or all, if fewer). Uses time-to-now, so it decays

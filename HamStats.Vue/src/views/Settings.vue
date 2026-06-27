@@ -58,6 +58,50 @@
       </v-card-text>
     </v-card>
 
+    <v-card flat class="mb-4">
+      <v-card-title>Stations</v-card-title>
+      <v-card-text>
+        <div class="text-body-2 mb-3">
+          Remove a station and all of its logged contacts. If N1MM is still broadcasting for it, the
+          station will re-register on its next radio update.
+        </div>
+        <v-list v-if="radios.length" density="compact" class="py-0">
+          <v-list-item v-for="radio in radios" :key="radio.id" class="px-0">
+            <v-list-item-title>{{ radio.name }}</v-list-item-title>
+            <v-list-item-subtitle>
+              {{ radio.operator || "no operator" }} · {{ radio.contacts.toLocaleString() }} contacts
+            </v-list-item-subtitle>
+            <template #append>
+              <v-btn
+                icon="mdi-delete"
+                variant="text"
+                color="error"
+                size="small"
+                :loading="deletingId === radio.id"
+                @click="askDelete(radio)"
+              />
+            </template>
+          </v-list-item>
+        </v-list>
+        <div v-else class="text-caption text-medium-emphasis">No stations yet.</div>
+      </v-card-text>
+    </v-card>
+
+    <v-dialog v-model="showDelete" max-width="420">
+      <v-card>
+        <v-card-title>Delete station?</v-card-title>
+        <v-card-text>
+          This permanently deletes <strong>{{ pending?.name }}</strong> and its
+          {{ pending?.contacts.toLocaleString() }} contacts. This cannot be undone.
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="showDelete = false">Cancel</v-btn>
+          <v-btn color="error" :loading="deletingId === pending?.id" @click="confirmDelete">Delete</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <v-card flat>
       <v-card-title>Callsign grid database</v-card-title>
       <v-card-text>
@@ -109,6 +153,13 @@ interface CallsignStatus {
   updatedAt: string | null;
 }
 
+interface Radio {
+  id: string;
+  name: string;
+  operator: string | null;
+  contacts: number;
+}
+
 const zones = ref<Zone[]>([]);
 const selected = ref<string>(timeZone.value);
 const saving = ref(false);
@@ -123,6 +174,11 @@ const gridRule = (v: string) =>
 const cycle = ref<number>(cycleSeconds.value);
 const savingCycle = ref(false);
 const cycleMessage = ref("");
+
+const radios = ref<Radio[]>([]);
+const deletingId = ref<string | null>(null);
+const showDelete = ref(false);
+const pending = ref<Radio | null>(null);
 
 const status = ref<CallsignStatus | null>(null);
 const importing = ref(false);
@@ -176,6 +232,28 @@ async function saveCycle() {
   }
 }
 
+async function loadRadios() {
+  const { data } = await axios.get("/api/v0/radios");
+  radios.value = data;
+}
+
+function askDelete(radio: Radio) {
+  pending.value = radio;
+  showDelete.value = true;
+}
+
+async function confirmDelete() {
+  if (!pending.value) return;
+  deletingId.value = pending.value.id;
+  try {
+    await axios.delete(`/api/v0/radios/${pending.value.id}`);
+    showDelete.value = false;
+    await loadRadios();
+  } finally {
+    deletingId.value = null;
+  }
+}
+
 async function loadStatus() {
   const { data } = await axios.get("/api/v0/callsigns/status");
   status.value = data;
@@ -207,9 +285,13 @@ onMounted(async () => {
   grid.value = stationGrid.value ?? "";
   cycle.value = cycleSeconds.value;
   await loadStatus();
-  // keep the preview clock ticking, and refresh the build status periodically
+  await loadRadios();
+  // keep the preview clock ticking, and refresh the build status / station list periodically
   clock = setInterval(() => (nowIso.value = new Date().toISOString()), 1000);
-  statusTimer = setInterval(loadStatus, 5000);
+  statusTimer = setInterval(() => {
+    loadStatus();
+    loadRadios();
+  }, 5000);
 });
 
 onUnmounted(() => {
