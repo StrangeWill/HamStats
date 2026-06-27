@@ -12,6 +12,9 @@ HamStats.Website/wwwroot
 .env
 data/
 
+# Downloaded callsign/postal dumps (FCC/ISED/GeoNames/cty.dat) — regenerated at runtime
+callsign-cache/
+
 # SQLite database
 *.db
 *.db-shm

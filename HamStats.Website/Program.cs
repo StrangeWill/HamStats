@@ -136,9 +136,12 @@ app.UseHangfireDashboard("/hangfire", new DashboardOptions
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<HamStatsDbContext>();
+    // SQLite won't create the DB's parent dir (e.g. data/) — ensure it exists before migrating.
+    var dbPath = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder(context.Database.GetConnectionString()).DataSource;
+    var dbDir = Path.GetDirectoryName(Path.GetFullPath(dbPath));
+    if (!string.IsNullOrEmpty(dbDir)) Directory.CreateDirectory(dbDir);
     context.Database.SetCommandTimeout((int)TimeSpan.FromMinutes(120).TotalSeconds);
-    await context.Database.EnsureDeletedAsync();
-    await context.Database.EnsureCreatedAsync();
+    await context.Database.MigrateAsync();
 }
 
 if (callsignOptions.Enabled)

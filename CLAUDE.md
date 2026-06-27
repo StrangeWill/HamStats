@@ -42,21 +42,25 @@ slot by `RadioNumber`, 1=A / 2=B). `Score` has many `ScoreBreakdown` (per band/m
 EF entity configuration lives **on the model classes themselves** — each model implements
 `IEntityTypeConfiguration<T>` and is wired up via `ApplyConfigurationsFromAssembly` in `HamStatsDbContext.OnModelCreating`.
 
-### The database is currently wiped on every startup (temporary)
+### The database persists across restarts (EF migrations)
 
-`Program.cs` calls `EnsureDeletedAsync()` then `EnsureCreatedAsync()` on launch. There are **no
-EF migrations** yet — the schema is recreated from the models each run, so editing a model takes
-effect on the next start.
+`Program.cs` calls `MigrateAsync()` on launch, applying any pending EF migrations to `hamstats.db`.
+The database is **durable, long-lived storage** — it is no longer wiped on startup.
 
-**This wipe is a temporary, early-development convenience, not a design constraint.** It is going
-away soon: once the schema settles we'll switch to EF migrations and `hamstats.db` will **persist
-across restarts**. Design for that end state — treat the database as durable, long-lived storage.
-Do **not** architect around the wipe (e.g. don't push data into separate files or external stores
-just to survive a restart, and don't shy away from storing data that's expensive to rebuild).
-Persisted data is the goal; the current wipe just means you may need to repopulate during dev.
+Migrations live in `HamStats.Data/Migrations/` (the assembly with `HamStatsDbContext`). After
+editing a model, scaffold a migration so the change takes effect:
+
+```bash
+dotnet ef migrations add <Name> --project HamStats.Data --startup-project HamStats.Website
+```
+
+(`Microsoft.EntityFrameworkCore.Design` is referenced by both projects so the tools resolve the
+DbContext.) The next startup applies it automatically. Design for durability — do **not** architect
+around losing data on restart (e.g. don't push data into separate files or external stores just to
+survive a restart, and don't shy away from storing data that's expensive to rebuild).
 
 `Setting` (key/value) follows this same model — a normal table holding app settings like the time
-zone. It's wiped today like everything else, but treat it as durable storage for the end state.
+zone, persisted like everything else.
 
 ### Live log streaming & runtime log level
 
@@ -107,8 +111,8 @@ dotnet watch run --project HamStats.Website       # hot-reload during dev
 ```
 
 No database server is needed for dev — the app creates a local `hamstats.db` SQLite file on
-startup (and wipes it each run, see below). `docker-compose.yml` is purely the shippable artifact
-(it runs the published image), not a dev dependency.
+startup and applies migrations to it (see above); it persists across runs. `docker-compose.yml` is
+purely the shippable artifact (it runs the published image), not a dev dependency.
 
 ### Frontend (Vue / Vite — run from `HamStats.Vue/`)
 
