@@ -27,6 +27,10 @@ export default ({ mode }: { mode: string }) => {
         server: {
             proxy: {
                 "/api": { target: "http://localhost:5000", secure: false },
+                // ws:true proxies the SignalR hub's WebSocket transport
+                "/hubs": { target: "http://localhost:5000", secure: false, ws: true },
+                // the server-rendered Hangfire dashboard (linked from Settings)
+                "/hangfire": { target: "http://localhost:5000", secure: false },
             },
             port: 3001,
             strictPort: true,

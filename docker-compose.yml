@@ -5,7 +5,7 @@ services:
     ports:
       - "${HTTP_PORT:-80}:5000"
       # N1MM+ broadcasts contacts/scores here over UDP — point your logger at this host:port
-      - "${N1MM_PORT:-16000}:16000/udp"
+      - "${N1MM_PORT:-12060}:12060/udp"
     volumes:
       - ./data:/data
     restart: unless-stopped

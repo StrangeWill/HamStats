@@ -25,6 +25,7 @@ public class ContactController : Controller
                 c.Class,
                 c.Date,
                 c.FromCall,
+                c.Gridsquare,
                 c.Mode,
                 c.RxFrequency,
                 c.Section,

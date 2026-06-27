@@ -34,6 +34,12 @@ public class Contact : IEntityTypeConfiguration<Contact>
 
     public string? Section { get; set; }
 
+    /// <summary>
+    /// Maidenhead grid of the worked station. Taken from N1MM when present, otherwise backfilled
+    /// from the offline <see cref="CallsignEntry"/> lookup table.
+    /// </summary>
+    public string? Gridsquare { get; set; }
+
     public string? Operator { get; set; }
 
 

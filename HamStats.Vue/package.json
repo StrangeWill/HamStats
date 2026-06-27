@@ -9,15 +9,23 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "axios": "^1.7.2",
-    "vue": "^3.4.19",
-    "vuetify": "^3.6.10"
+    "@microsoft/signalr": "^10.0.0",
+    "axios": "^1.18.1",
+    "d3-geo": "^3.1.1",
+    "topojson-client": "^3.1.0",
+    "us-atlas": "^3.0.1",
+    "vue": "^3.5.38",
+    "vue-router": "^4.6.4",
+    "vuetify": "^4.1.2",
+    "world-atlas": "^2.0.2"
   },
   "devDependencies": {
-    "@types/node": "^20.11.25",
-    "@vitejs/plugin-vue": "^5.0.4",
-    "typescript": "^5.2.2",
-    "vite": "^5.1.4",
-    "vue-tsc": "^1.8.27"
+    "@types/d3-geo": "^3.1.0",
+    "@types/node": "^26.0.1",
+    "@types/topojson-client": "^3.1.5",
+    "@vitejs/plugin-vue": "^6.0.7",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.0",
+    "vue-tsc": "^3.3.5"
   }
 }

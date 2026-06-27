@@ -3,11 +3,13 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 using System.Xml.Linq;
 using System.Xml.Serialization;
 using HamStats.Data;
 using HamStats.Data.Models;
 using HamStats.Website.Data;
+using HamStats.Website.Hubs;
 using Microsoft.EntityFrameworkCore;
 
 namespace HamStats.Website.HostedServices;
@@ -18,44 +20,89 @@ public class N1MMWatcher : IHostedService
 
     protected IServiceProvider ServiceProvider { get; }
 
+    protected DashboardNotifier Notifier { get; }
+
     protected UdpClient UdpClient { get; set; }
+
+    // Inbound datagrams are queued here so the socket reader never waits on a DB write.
+    private readonly Channel<string> Messages = Channel.CreateUnbounded<string>(
+        new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
+
+    private readonly CancellationTokenSource Cancellation = new();
 
     public N1MMWatcher(
         ILogger<N1MMWatcher> logger,
-        IServiceProvider serviceProvider)
+        IServiceProvider serviceProvider,
+        IConfiguration configuration,
+        DashboardNotifier notifier)
     {
         Logger = logger;
         ServiceProvider = serviceProvider;
-        UdpClient = new UdpClient(new IPEndPoint(IPAddress.Any, 16000));
+        Notifier = notifier;
+        // N1MM+ broadcasts to UDP 12060 by default; override with N1MM:BroadcastPort.
+        var port = configuration.GetValue<int?>("N1MM:BroadcastPort") ?? 12060;
+        Logger.LogInformation("N1MM Watcher listening for broadcasts on UDP port {Port}", port);
+        UdpClient = new UdpClient(new IPEndPoint(IPAddress.Any, port));
+        // Absorb bursts at the OS level so datagrams aren't dropped during a slow write.
+        UdpClient.Client.ReceiveBufferSize = 1 << 20;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _ = ReceiveDataAsync(cancellationToken);
+        // A tight receiver drains the socket into the queue; a separate worker does the parsing and
+        // DB writes. Decoupling them stops a slow write from back-pressuring the socket and dropping
+        // inbound datagrams — UDP has no retransmit, so a dropped packet is lost data.
+        _ = ReceiveLoopAsync(Cancellation.Token);
+        _ = ProcessLoopAsync(Cancellation.Token);
         return Task.CompletedTask;
     }
 
-    protected async Task ReceiveDataAsync(CancellationToken cancellationToken)
+    protected async Task ReceiveLoopAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                var result = await UdpClient.ReceiveAsync(cancellationToken);
+                var message = Encoding.UTF8.GetString(result.Buffer).Replace("False", "false").Replace("True", "true");
+                Logger.LogTrace(message);
+                // Unbounded queue: TryWrite always succeeds, so the socket is never blocked.
+                Messages.Writer.TryWrite(message);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception exception)
+            {
+                Logger.LogError(exception, "Error receiving N1MM datagram");
+            }
+        }
+
+        Messages.Writer.TryComplete();
+    }
+
+    protected async Task ProcessLoopAsync(CancellationToken cancellationToken)
     {
         try
         {
-            var result = await UdpClient.ReceiveAsync();
-            var receivedMessage = Encoding.UTF8.GetString(result.Buffer).Replace("False", "false").Replace("True", "false");
-            Logger.LogTrace(receivedMessage);
-            var element = XElement.Parse(receivedMessage);
-            await HandleMessage(element);
+            await foreach (var message in Messages.Reader.ReadAllAsync(cancellationToken))
+            {
+                try
+                {
+                    var element = XElement.Parse(message);
+                    await HandleMessage(element);
+                }
+                catch (Exception exception)
+                {
+                    Logger.LogError(exception, "Error handling message: {Message}", message);
+                }
+            }
         }
-        catch (Exception exception)
+        catch (OperationCanceledException)
         {
-            Logger.LogError(exception, "Error handling message");
+            // shutting down
         }
-
-        if (cancellationToken.IsCancellationRequested)
-        {
-            return;
-        }
-
-        await ReceiveDataAsync(cancellationToken);
     }
 
     protected async Task HandleMessage(XElement element)
@@ -63,7 +110,7 @@ public class N1MMWatcher : IHostedService
         var root = element.Name.LocalName.ToLower();
         var task = root switch
         {
-            "AppInfo" => ProcessXml<ApplicationInfo>(element),
+            "appinfo" => ProcessXml<ApplicationInfo>(element),
             "contactinfo" => ProcessXml<ContactInfo>(element),
             "contactreplace" => ProcessXml<ContactReplace>(element),
             "contactdelete" => ProcessXml<ContactDelete>(element),
@@ -86,6 +133,7 @@ public class N1MMWatcher : IHostedService
     public Task StopAsync(CancellationToken cancellationToken)
     {
         Logger.LogInformation("Shutting down N1MM Watcher");
+        Cancellation.Cancel();
         UdpClient.Close();
         return Task.CompletedTask;
     }
@@ -134,6 +182,7 @@ public class N1MMWatcher : IHostedService
             .Where(r => r.RadioNumber == info.RadioNumber)
             .Select(r => r.VFO!.RadioId)
             .FirstAsync();
+        var gridsquare = await ResolveGrid(hamStatsDbContext, info.Gridsquare, info.Call);
         hamStatsDbContext.N1MMContacts.Add(new N1MMContact
         {
             Date = info.TimeStamp.Value.ToUniversalTime(),
@@ -161,11 +210,13 @@ public class N1MMWatcher : IHostedService
                 TxFrequency = info.TxFrequency,
                 Class = info.Exchange1,
                 Section = info.Section,
+                Gridsquare = gridsquare,
                 RadioId = radioId.Value,
                 Operator = info.Operator,
             }
         });
         await hamStatsDbContext.SaveChangesAsync();
+        await Notifier.Changed(DashboardNotifier.Contacts, DashboardNotifier.Radios);
 
         Logger.LogDebug($"Contact: {info.Call} - {info.Band} - {info.TimeStamp.Value.ToUniversalTime()} - {info.Mode} - {info.RadioInterfaced} - {info.RadioNumber} - {info.Operator} - RX: {info.RxFrequency} - TX: {info.TxFrequency}");
     }
@@ -203,8 +254,10 @@ public class N1MMWatcher : IHostedService
         contact.Contact.TxFrequency = info.TxFrequency;
         contact.Contact.Class = info.Exchange1;
         contact.Contact.Section = info.Section;
+        contact.Contact.Gridsquare = await ResolveGrid(hamStatsDbContext, info.Gridsquare, info.Call);
 
         await hamStatsDbContext.SaveChangesAsync();
+        await Notifier.Changed(DashboardNotifier.Contacts);
         Logger.LogDebug($"Contact Replace: {info.App}");
     }
 
@@ -218,12 +271,52 @@ public class N1MMWatcher : IHostedService
         await hamStatsDbContext.N1MMContacts
             .Where(n => n.N1MMId == info.Id)
             .ExecuteDeleteAsync();
+        await Notifier.Changed(DashboardNotifier.Contacts, DashboardNotifier.Radios);
         Logger.LogDebug($"Contact Delete: {info.App}");
     }
 
     protected async Task Process(LookupInfo info)
     {
         Logger.LogDebug($"Lookup: {info.App}");
+    }
+
+    /// <summary>
+    /// Resolves the worked station's Maidenhead grid: prefer what N1MM supplied, otherwise fall back
+    /// to the offline <see cref="CallsignEntry"/> lookup table (populated by the Hangfire import job).
+    /// </summary>
+    protected async Task<string?> ResolveGrid(HamStatsDbContext hamStatsDbContext, string? provided, string? call)
+    {
+        if (!string.IsNullOrWhiteSpace(provided))
+        {
+            return provided;
+        }
+
+        if (string.IsNullOrWhiteSpace(call))
+        {
+            return null;
+        }
+
+        var key = call.ToUpperInvariant();
+
+        // Prefer a precise per-licensee grid (FCC/ISED postal lookup).
+        var exact = await hamStatsDbContext.Callsigns
+            .Where(c => c.Callsign == key)
+            .Select(c => c.Grid)
+            .FirstOrDefaultAsync();
+        if (exact is not null)
+        {
+            return exact;
+        }
+
+        // Fall back to the cty.dat prefix table for DX coverage: an exact-callsign exception wins,
+        // otherwise the longest matching leading prefix. Naive leading match (ignores portable
+        // indicators) but sufficient to place a contact at its DXCC entity.
+        return await hamStatsDbContext.CallsignPrefixes
+            .Where(p => (p.IsExact && p.Prefix == key) || (!p.IsExact && EF.Functions.Like(key, p.Prefix + "%")))
+            .OrderByDescending(p => p.IsExact)
+            .ThenByDescending(p => p.Prefix.Length)
+            .Select(p => p.Grid)
+            .FirstOrDefaultAsync();
     }
 
     protected async Task Process(RadioInfo info)
@@ -269,6 +362,7 @@ public class N1MMWatcher : IHostedService
         n1mmRadio.VFO.TxFrequency = info.TxFrequency;
         n1mmRadio.VFO.Radio.Operator = info.OpCall;
         await hamStatsDbContext.SaveChangesAsync();
+        await Notifier.Changed(DashboardNotifier.Radios);
         Logger.LogDebug($"Radio Info: {info.RadioName} #:{info.RadioNumber} - RX: {info.Frequency} - TX: {info.TxFrequency}");
     }
 
@@ -337,6 +431,7 @@ public class N1MMWatcher : IHostedService
         }
 
         await hamStatsDbContext.SaveChangesAsync();
+        await Notifier.Changed(DashboardNotifier.Scores);
         Logger.LogDebug($"Score: {info.Score}");
     }
 }

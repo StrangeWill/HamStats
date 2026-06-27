@@ -9,7 +9,7 @@ COPY HamStats.Vue/ ./
 RUN npm run build
 
 # Stage 2: Build .NET backend
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS backend-build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS backend-build
 ARG version=0.0.0
 ARG gitsha=unknown
 WORKDIR /src
@@ -28,7 +28,7 @@ RUN shortsha=$(printf '%.8s' "$gitsha") \
         /p:InformationalVersion=$version+$shortsha
 
 # Stage 3: Runtime image
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
 COPY --from=backend-build /app/publish .
@@ -37,13 +37,14 @@ COPY --from=frontend-build /src/HamStats.Vue/build ./wwwroot
 # Bind to all interfaces (appsettings.json pins localhost, which is unreachable in a container)
 ENV Kestrel__Endpoints__Http__Url="http://+:5000"
 ENV ASPNETCORE_ENVIRONMENT="Production"
-# SQLite database lives in /data so it can be mounted as a volume
+# SQLite database and downloaded callsign/postal dumps live in /data so they persist on the mounted volume
 ENV ConnectionStrings__Default="Data Source=/data/hamstats.db"
+ENV CallsignLookup__CacheDirectory="/data/callsign-cache"
 
 # HTTP dashboard / API
 EXPOSE 5000
 # N1MM+ UDP broadcast ingestion
-EXPOSE 16000/udp
+EXPOSE 12060/udp
 
 VOLUME ["/data"]
 

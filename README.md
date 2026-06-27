@@ -5,10 +5,15 @@ A live amateur-radio contest scoreboard. HamStats listens to UDP broadcasts from
 serves a real-time web dashboard showing radios, contacts, and the running score breakdown — built
 for multi-operator events like ARRL Field Day.
 
+It's designed to run as a **passive wall/kiosk display** — left up on a screen for everyone to
+watch, with no mouse or keyboard needed during operation. Admin functions (a live N1MM **packet
+log** and **settings**, including the local time zone used for all displayed times) are tucked
+behind the app-bar menu so the dashboard stays clean for viewing.
+
 ## How it works
 
 ```
-N1MM+ logger ──UDP:16000──▶ HamStats.Website ──▶ SQLite
+N1MM+ logger ──UDP:12060──▶ HamStats.Website ──▶ SQLite
    (XML broadcasts)         (N1MMWatcher)             │
                                   │                    │
                             /api/v0/* ◀───────────────┘
@@ -17,20 +22,20 @@ N1MM+ logger ──UDP:16000──▶ HamStats.Website ──▶ SQLite
 ```
 
 N1MM+ is configured to broadcast contact, radio, and score messages over UDP. The `N1MMWatcher`
-background service receives them on port 16000, parses the XML, and persists it. The dashboard
+background service receives them on port 12060, parses the XML, and persists it. The dashboard
 polls the API once per second to stay current.
 
 ## Components
 
 | Project           | Stack                          | Role                                              |
 | ----------------- | ------------------------------ | ------------------------------------------------- |
-| `HamStats.Website`| ASP.NET Core 8                 | UDP ingestion, `/api/v0/*` API, serves the SPA    |
-| `HamStats.Data`   | EF Core 8 + SQLite             | Database context and entity models                |
+| `HamStats.Website`| ASP.NET Core 10                | UDP ingestion, `/api/v0/*` API, serves the SPA    |
+| `HamStats.Data`   | EF Core 10 + SQLite            | Database context and entity models                |
 | `HamStats.Vue`    | Vue 3 + Vuetify 3 + Vite       | Real-time dashboard frontend                      |
 
 ## Prerequisites
 
-- [.NET 8 SDK](https://dotnet.microsoft.com/download)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - [Node.js](https://nodejs.org/) (for the Vue frontend)
 - [Docker](https://www.docker.com/) (only to run the published container — not needed for local development)
 
@@ -46,7 +51,7 @@ docker compose up -d
 ```
 
 The dashboard is then available at `http://localhost` and N1MM+ broadcasts are received on UDP
-port `16000`. Point N1MM+ at this host's IP / port `16000` and contacts will appear as they're
+port `12060`. Point N1MM+ at this host's IP / port `12060` and contacts will appear as they're
 logged. The SQLite database is persisted in a `data/` directory alongside the compose file.
 
 > The `stable` tag always points to the latest release. Set `VERSION` in `.env` to pin a version.
@@ -55,7 +60,7 @@ logged. The SQLite database is persisted in a `data/` directory alongside the co
 
 No database server is required — the backend creates a local `hamstats.db` SQLite file on startup.
 
-1. **Run the backend** (serves on `http://localhost:5000`, Swagger UI at `/swagger`):
+1. **Run the backend** (serves on `http://localhost:5000`, OpenAPI doc at `/openapi/v1.json`):
 
    ```bash
    dotnet run --project HamStats.Website
@@ -70,13 +75,14 @@ No database server is required — the backend creates a local `hamstats.db` SQL
    ```
 
 3. **Point N1MM+ at it:** configure N1MM+ to broadcast over UDP to this machine's IP on port
-   `16000`. Contacts and scores will appear on the dashboard as they're logged.
+   `12060` (N1MM+'s default broadcast port). Contacts and scores will appear on the dashboard as
+   they're logged.
 
 ## Configuration
 
 - **Database connection** — `HamStats.Website/appsettings.json` (`ConnectionStrings:Default`); defaults
   to a local `hamstats.db` file, overridden to `/data/hamstats.db` in the container.
-- **UDP listen port** — `16000`, set in `HamStats.Website/HostedServices/N1MMWatcher.cs`.
+- **UDP listen port** — `12060` (N1MM+ default); override with `N1MM:BroadcastPort` in `appsettings.json`.
 - **Backend URL** — `http://localhost:5000`, set in `appsettings.json` (Kestrel).
 
 ## Note on data persistence

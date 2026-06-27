@@ -2,6 +2,7 @@ using System.Xml.Serialization;
 
 namespace HamStats.Website.Data;
 
+[XmlRoot("AppInfo")]
 public class ApplicationInfo
 {
     [XmlElement("app")]
