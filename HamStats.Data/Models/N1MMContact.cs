@@ -33,6 +33,10 @@ public class N1MMContact : IEntityTypeConfiguration<N1MMContact>
 
     public string? Section { get; set; }
 
+    // Raw grid N1MM sent (usually empty for Field Day). Kept verbatim so the resolved Contact.Gridsquare
+    // can be recomputed later without losing an operator-supplied grid to a lookup guess.
+    public string? Gridsquare { get; set; }
+
     public string? Operator { get; set; }
 
     public string N1MMId { get; set; }

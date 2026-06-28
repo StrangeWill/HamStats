@@ -346,20 +346,16 @@ const totalQsos = computed(() => bandBreakdown.value.reduce((s, b) => s + b.qsos
 const totalScore = computed(() => scoreData.value?.value ?? 0);
 
 const PALETTE = ["#42a5f5", "#ef5350", "#66bb6a", "#ffa726", "#ab47bc", "#26c6da", "#d4e157", "#ec407a"];
-// Persisted so a radio keeps its color across reloads and regardless of discovery order — assigning by
-// insertion order alone reshuffled everyone whenever a radio appeared/disappeared. New radios take the
-// first unused palette slot (wrapping once it's exhausted); existing assignments are never disturbed.
-const radioColors = new Map<string, string>(Object.entries(JSON.parse(localStorage.getItem("radioColors") ?? "{}")));
+// Color is a pure function of the radio name (FNV-1a hash → palette slot), so the same radio gets the
+// same color on every PC and across reloads, independent of discovery order. No persisted state needed.
 function colorFor(name: string | null | undefined): string {
   const key = name || "—";
-  let color = radioColors.get(key);
-  if (!color) {
-    const used = new Set(radioColors.values());
-    color = PALETTE.find((c) => !used.has(c)) ?? PALETTE[radioColors.size % PALETTE.length];
-    radioColors.set(key, color);
-    localStorage.setItem("radioColors", JSON.stringify(Object.fromEntries(radioColors)));
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < key.length; i++) {
+    hash ^= key.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
   }
-  return color;
+  return PALETTE[(hash >>> 0) % PALETTE.length];
 }
 
 // Hold full opacity for most of the lifetime, then drop off quickly over the final stretch.

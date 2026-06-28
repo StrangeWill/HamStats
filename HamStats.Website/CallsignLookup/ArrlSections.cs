@@ -111,6 +111,29 @@ public static class ArrlSections
         ["SK"] = (50.45, -104.62),
     };
 
+    // Section → US state postal code. Many sections split a single state (STX/NTX/WTX → TX, EMA/WMA → MA,
+    // the California sections → CA), so we need this to compare a section against a licensee's home state.
+    // Canadian (RAC) sections are intentionally absent: ISED licences carry no Region, so the home-state
+    // match is skipped for them anyway and the precise grid is kept.
+    private static readonly Dictionary<string, string> States = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["CT"] = "CT", ["EMA"] = "MA", ["ME"] = "ME", ["NH"] = "NH", ["RI"] = "RI", ["VT"] = "VT", ["WMA"] = "MA",
+        ["ENY"] = "NY", ["NLI"] = "NY", ["NNJ"] = "NJ",
+        ["NNY"] = "NY", ["SNJ"] = "NJ", ["WNY"] = "NY", ["DE"] = "DE", ["EPA"] = "PA", ["MDC"] = "MD", ["WPA"] = "PA",
+        ["IL"] = "IL", ["IN"] = "IN", ["WI"] = "WI",
+        ["MN"] = "MN", ["ND"] = "ND", ["SD"] = "SD",
+        ["AR"] = "AR", ["LA"] = "LA", ["MS"] = "MS", ["TN"] = "TN",
+        ["KY"] = "KY", ["MI"] = "MI", ["OH"] = "OH",
+        ["IA"] = "IA", ["KS"] = "KS", ["MO"] = "MO", ["NE"] = "NE",
+        ["AK"] = "AK", ["EWA"] = "WA", ["ID"] = "ID", ["MT"] = "MT", ["OR"] = "OR", ["WWA"] = "WA",
+        ["EB"] = "CA", ["SF"] = "CA", ["SCV"] = "CA", ["SJV"] = "CA", ["SV"] = "CA", ["NV"] = "NV", ["PAC"] = "HI",
+        ["NC"] = "NC", ["SC"] = "SC", ["VA"] = "VA", ["WV"] = "WV",
+        ["CO"] = "CO", ["NM"] = "NM", ["UT"] = "UT", ["WY"] = "WY",
+        ["AL"] = "AL", ["GA"] = "GA", ["NFL"] = "FL", ["SFL"] = "FL", ["WCF"] = "FL", ["PR"] = "PR", ["VI"] = "VI",
+        ["AZ"] = "AZ", ["LAX"] = "CA", ["ORG"] = "CA", ["SB"] = "CA", ["SDG"] = "CA",
+        ["NTX"] = "TX", ["OK"] = "OK", ["STX"] = "TX", ["WTX"] = "TX",
+    };
+
     /// <summary>Returns a section-level Maidenhead grid for the section, or null if unknown (e.g. "DX").</summary>
     public static string? GridFor(string? section)
     {
@@ -120,5 +143,16 @@ public static class ArrlSections
         }
 
         return Maidenhead.Encode(c.Lat, c.Lon);
+    }
+
+    /// <summary>Returns the US state postal code a section belongs to, or null for unknown/Canadian sections.</summary>
+    public static string? StateFor(string? section)
+    {
+        if (string.IsNullOrWhiteSpace(section) || !States.TryGetValue(section.Trim(), out var state))
+        {
+            return null;
+        }
+
+        return state;
     }
 }

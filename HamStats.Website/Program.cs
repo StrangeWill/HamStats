@@ -62,6 +62,10 @@ builder.Services.AddSingleton(runtimeLogLevels.Provider);
 // Pushes live dashboard updates so the SPA can drop its polling loop.
 builder.Services.AddSingleton<DashboardNotifier>();
 
+// Resolves a worked station's grid (N1MM grid → callsign lookup → section centroid). Shared by the
+// live watcher and the settings-page re-resolve action. Stateless; the DbContext is passed per call.
+builder.Services.AddSingleton<GridResolver>();
+
 // Offline callsign → grid lookup: downloads (and disk-caches) license + postal data via a Hangfire
 // job, then backfills contact grids when N1MM doesn't supply one. See HamStats.Website/CallsignLookup.
 var callsignOptions = configuration.GetSection(CallsignLookupOptions.SectionName).Get<CallsignLookupOptions>()

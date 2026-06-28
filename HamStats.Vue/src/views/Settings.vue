@@ -115,6 +115,19 @@
       </v-card>
     </v-dialog>
 
+    <v-card flat class="mb-4">
+      <v-card-title>Map</v-card-title>
+      <v-card-text>
+        <div class="text-body-2 mb-3">
+          Recompute every stored contact's map position with the current rules and callsign database.
+          Grids are set when a contact is logged, so run this after rebuilding the callsign database or
+          to apply placement changes to history. Refresh the map display afterward to see the result.
+        </div>
+        <v-btn color="primary" :loading="reresolving" @click="reresolveGrids">Re-resolve map positions</v-btn>
+        <div v-if="reresolveMessage" class="text-caption mt-2 text-medium-emphasis">{{ reresolveMessage }}</div>
+      </v-card-text>
+    </v-card>
+
     <v-card flat>
       <v-card-title>Callsign grid database</v-card-title>
       <v-card-text>
@@ -196,6 +209,9 @@ const radios = ref<Radio[]>([]);
 const deletingId = ref<string | null>(null);
 const showDelete = ref(false);
 const pending = ref<Radio | null>(null);
+
+const reresolving = ref(false);
+const reresolveMessage = ref("");
 
 const status = ref<CallsignStatus | null>(null);
 const importing = ref(false);
@@ -281,6 +297,19 @@ async function confirmDelete() {
     await loadRadios();
   } finally {
     deletingId.value = null;
+  }
+}
+
+async function reresolveGrids() {
+  reresolving.value = true;
+  reresolveMessage.value = "";
+  try {
+    const { data } = await axios.post("/api/v0/contacts/reresolve-grids");
+    reresolveMessage.value = `Updated ${data.changed.toLocaleString()} of ${data.total.toLocaleString()} contacts. Refresh the map to see the changes.`;
+  } catch {
+    reresolveMessage.value = "Failed to re-resolve map positions.";
+  } finally {
+    reresolving.value = false;
   }
 }
 

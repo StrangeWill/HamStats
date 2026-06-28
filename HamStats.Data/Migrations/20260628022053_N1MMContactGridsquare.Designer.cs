@@ -3,6 +3,7 @@ using System;
 using HamStats.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace HamStats.Data.Migrations
 {
     [DbContext(typeof(HamStatsDbContext))]
-    partial class HamStatsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260628022053_N1MMContactGridsquare")]
+    partial class N1MMContactGridsquare
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.9");
